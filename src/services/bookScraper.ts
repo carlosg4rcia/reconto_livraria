@@ -58,16 +58,20 @@ async function searchWithApify(isbn: string, useISBN10: boolean = false): Promis
       const isbn10 = convertISBN13to10(isbn)
       if (isbn10) {
         searchQuery = isbn10
+        console.log(`Convertido ISBN-13 (${isbn}) para ISBN-10 (${isbn10})`)
       }
     }
 
     const searchUrl = `https://www.amazon.com.br/s?k=${searchQuery}&i=stripbooks`
+    console.log(`Buscando na Amazon: ${searchUrl}`)
 
     const input = {
       startUrls: [{ url: searchUrl }],
-      maxResults: 3,
+      maxResults: 5,
+      proxyConfiguration: { useApifyProxy: true },
     }
 
+    console.log('Iniciando busca no Apify...')
     const runResponse = await fetch(
       'https://api.apify.com/v2/acts/junglee~free-amazon-product-scraper/runs?token=' + APIFY_TOKEN,
       {
@@ -80,17 +84,23 @@ async function searchWithApify(isbn: string, useISBN10: boolean = false): Promis
     )
 
     if (!runResponse.ok) {
-      console.error('Failed to start Apify run')
+      const errorText = await runResponse.text()
+      console.error('Failed to start Apify run:', errorText)
       return null
     }
 
     const runData = await runResponse.json()
     const runId = runData.data.id
     const defaultDatasetId = runData.data.defaultDatasetId
+    console.log(`Run ID: ${runId}`)
 
     let status = runData.data.status
-    while (status !== 'SUCCEEDED' && status !== 'FAILED' && status !== 'ABORTED') {
-      await new Promise(resolve => setTimeout(resolve, 2000))
+    let attempts = 0
+    const maxAttempts = 30
+
+    while (status !== 'SUCCEEDED' && status !== 'FAILED' && status !== 'ABORTED' && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      attempts++
 
       const statusResponse = await fetch(
         `https://api.apify.com/v2/acts/junglee~free-amazon-product-scraper/runs/${runId}?token=${APIFY_TOKEN}`
@@ -99,31 +109,37 @@ async function searchWithApify(isbn: string, useISBN10: boolean = false): Promis
       if (statusResponse.ok) {
         const statusData = await statusResponse.json()
         status = statusData.data.status
+        console.log(`Status da busca: ${status} (tentativa ${attempts}/${maxAttempts})`)
       } else {
         break
       }
     }
 
     if (status !== 'SUCCEEDED') {
-      console.error('Apify run did not succeed')
+      console.error(`Apify run não foi bem-sucedido. Status final: ${status}`)
       return null
     }
 
+    console.log('Busca concluída! Obtendo resultados...')
     const datasetResponse = await fetch(
       `https://api.apify.com/v2/datasets/${defaultDatasetId}/items?token=${APIFY_TOKEN}`
     )
 
     if (!datasetResponse.ok) {
+      console.error('Falha ao obter resultados do dataset')
       return null
     }
 
     const items = await datasetResponse.json()
+    console.log(`Encontrados ${items?.length || 0} resultados`)
 
     if (!items || items.length === 0) {
+      console.warn('Nenhum resultado encontrado')
       return null
     }
 
     const result = items[0] as ApifyBookResult
+    console.log('Primeiro resultado:', result.title)
 
     let author = 'Autor Desconhecido'
     let publisher = ''
