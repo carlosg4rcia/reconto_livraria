@@ -158,8 +158,8 @@ export default function Books() {
       const bookData = await searchBookByISBN(formData.isbn)
 
       if (!bookData) {
-        alert('Livro não encontrado. Tente outro ISBN.')
         setIsbnSearchLoading(false)
+        alert('Livro não encontrado. Tente outro ISBN.')
         return
       }
 
@@ -186,35 +186,27 @@ export default function Books() {
         fieldsUpdated.push('Preço')
       }
 
-      const updatedFormData = {
-        ...formData,
-        title: bookData.title || formData.title,
-        author: bookData.author || formData.author,
-        description: bookData.description || formData.description,
-        publisher: bookData.publisher || formData.publisher,
-        publication_year: bookData.publicationYear?.toString() || formData.publication_year,
-        price: bookData.price?.toString() || formData.price,
-      }
+      setFormData(prev => ({
+        ...prev,
+        title: bookData.title || prev.title,
+        author: bookData.author || prev.author,
+        description: bookData.description || prev.description,
+        publisher: bookData.publisher || prev.publisher,
+        publication_year: bookData.publicationYear?.toString() || prev.publication_year,
+        price: bookData.price?.toString() || prev.price,
+      }))
 
-      console.log('Atualizando formulário com:', updatedFormData)
-      setFormData(updatedFormData)
+      setIsbnSearchLoading(false)
 
       if (fieldsUpdated.length > 0) {
-        setTimeout(() => {
-          alert(`✓ Dados carregados com sucesso!\n\nCampos preenchidos:\n• ${fieldsUpdated.join('\n• ')}\n\nPreencha preço e estoque para finalizar.`)
-        }, 100)
+        alert(`✓ Dados carregados!\n\nCampos: ${fieldsUpdated.join(', ')}\n\nAgora preencha preço e estoque.`)
       } else {
-        setTimeout(() => {
-          alert('Livro encontrado, mas nenhum dado adicional disponível.')
-        }, 100)
+        alert('Livro encontrado, mas sem dados adicionais.')
       }
     } catch (error) {
       console.error('Error searching ISBN:', error)
-      setTimeout(() => {
-        alert(`Erro ao buscar ISBN:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
-      }, 100)
-    } finally {
       setIsbnSearchLoading(false)
+      alert(`Erro ao buscar ISBN:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     }
   }
 
@@ -497,6 +489,7 @@ export default function Books() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
+                          e.stopPropagation()
                           if (formData.isbn.trim() && !isbnSearchLoading) {
                             handleISBNSearch(e)
                           }
