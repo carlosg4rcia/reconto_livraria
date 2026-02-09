@@ -25,7 +25,25 @@ function getApifyToken(): string | null {
   return localStorage.getItem('apify_token') || import.meta.env.VITE_APIFY_API_TOKEN || null
 }
 
-async function searchWithApify(isbn: string): Promise<BookData | null> {
+function convertISBN13to10(isbn13: string): string | null {
+  if (isbn13.length !== 13 || !isbn13.startsWith('978')) {
+    return null
+  }
+
+  const isbn10Base = isbn13.substring(3, 12)
+  let sum = 0
+
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(isbn10Base[i]) * (10 - i)
+  }
+
+  const checkDigit = (11 - (sum % 11)) % 11
+  const checkChar = checkDigit === 10 ? 'X' : checkDigit.toString()
+
+  return isbn10Base + checkChar
+}
+
+async function searchWithApify(isbn: string, useISBN10: boolean = false): Promise<BookData | null> {
   const APIFY_TOKEN = getApifyToken()
 
   if (!APIFY_TOKEN) {
@@ -34,11 +52,20 @@ async function searchWithApify(isbn: string): Promise<BookData | null> {
   }
 
   try {
-    const searchUrl = `https://www.amazon.com.br/s?k=${isbn}`
+    let searchQuery = isbn
+
+    if (useISBN10 && isbn.length === 13) {
+      const isbn10 = convertISBN13to10(isbn)
+      if (isbn10) {
+        searchQuery = isbn10
+      }
+    }
+
+    const searchUrl = `https://www.amazon.com.br/s?k=${searchQuery}&i=stripbooks`
 
     const input = {
       startUrls: [{ url: searchUrl }],
-      maxResults: 1,
+      maxResults: 3,
     }
 
     const runResponse = await fetch(
@@ -148,7 +175,12 @@ export async function searchBookByISBN(isbn: string): Promise<BookData | null> {
     throw new Error('Token da API Apify não configurado. Configure em Configurações.')
   }
 
-  const bookData = await searchWithApify(cleanISBN)
+  let bookData = await searchWithApify(cleanISBN, false)
+
+  if (!bookData && cleanISBN.length === 13) {
+    console.log('Tentando busca com ISBN-10...')
+    bookData = await searchWithApify(cleanISBN, true)
+  }
 
   if (!bookData) {
     throw new Error('Livro não encontrado na Amazon.')
