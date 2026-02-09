@@ -1,39 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, Check, X, AlertCircle, ExternalLink } from 'lucide-react'
+import { Settings as SettingsIcon, Check, AlertCircle, ExternalLink } from 'lucide-react'
 
 export default function Settings() {
   const [apifyToken, setApifyToken] = useState('')
   const [isSaved, setIsSaved] = useState(false)
-  const [googleBooksStatus, setGoogleBooksStatus] = useState<'checking' | 'active' | 'error'>('checking')
-  const [apifyStatus, setApifyStatus] = useState<'checking' | 'active' | 'inactive' | 'error'>('checking')
+  const [apifyStatus, setApifyStatus] = useState<'active' | 'inactive'>('inactive')
 
   useEffect(() => {
     const savedToken = localStorage.getItem('apify_token')
     if (savedToken) {
       setApifyToken(savedToken)
-    }
-    checkAPIsStatus()
-  }, [])
-
-  const checkAPIsStatus = async () => {
-    try {
-      const response = await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:9780134685991')
-      if (response.ok) {
-        setGoogleBooksStatus('active')
-      } else {
-        setGoogleBooksStatus('error')
-      }
-    } catch {
-      setGoogleBooksStatus('error')
-    }
-
-    const savedToken = localStorage.getItem('apify_token')
-    if (savedToken) {
       setApifyStatus('active')
-    } else {
-      setApifyStatus('inactive')
     }
-  }
+  }, [])
 
   const handleSaveToken = () => {
     if (apifyToken.trim()) {
@@ -72,39 +51,14 @@ export default function Settings() {
               <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-blue-900">
                 <p className="font-medium mb-1">Como funciona:</p>
-                <ul className="list-disc list-inside space-y-1 text-blue-800">
-                  <li>O Google Books API é gratuito e sempre está ativo</li>
-                  <li>A Apify permite buscar livros na Amazon (requer token)</li>
-                  <li>O sistema tenta primeiro o Google Books, depois a Apify</li>
-                </ul>
+                <p className="text-blue-800">
+                  O sistema usa a API da Apify para buscar informações de livros diretamente da Amazon Brasil através do ISBN.
+                </p>
               </div>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${googleBooksStatus === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <div>
-                  <h3 className="font-semibold text-slate-900">Google Books API</h3>
-                  <p className="text-sm text-slate-600">Gratuito e sempre ativo</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {googleBooksStatus === 'active' ? (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <Check className="w-5 h-5" />
-                    <span className="font-medium">Ativo</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <X className="w-5 h-5" />
-                    <span className="font-medium">Erro</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between p-4 bg-slate-50">
                 <div className="flex items-center gap-3">
