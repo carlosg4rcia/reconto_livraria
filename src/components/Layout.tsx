@@ -7,6 +7,7 @@ import {
   Users,
   ShoppingCart,
   BarChart3,
+  Settings,
   LogOut
 } from 'lucide-react'
 
@@ -27,6 +28,7 @@ export default function Layout() {
     { name: 'Clientes', href: '/customers', icon: Users },
     { name: 'Vendas', href: '/sales', icon: ShoppingCart },
     { name: 'Relatórios', href: '/reports', icon: BarChart3 },
+    { name: 'Configurações', href: '/settings', icon: Settings },
   ]
 
   return (

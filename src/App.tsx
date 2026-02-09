@@ -8,6 +8,7 @@ import Customers from './pages/Customers'
 import Sales from './pages/Sales'
 import NewSale from './pages/NewSale'
 import Reports from './pages/Reports'
+import Settings from './pages/Settings'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,7 @@ function App() {
             <Route path="sales" element={<Sales />} />
             <Route path="sales/new" element={<NewSale />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </BrowserRouter>

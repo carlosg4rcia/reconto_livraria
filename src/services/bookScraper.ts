@@ -44,9 +44,13 @@ interface GoogleBookResult {
   }
 }
 
-const APIFY_TOKEN = import.meta.env.VITE_APIFY_API_TOKEN
+function getApifyToken(): string | null {
+  return localStorage.getItem('apify_token') || import.meta.env.VITE_APIFY_API_TOKEN || null
+}
 
 async function searchWithApify(isbn: string): Promise<BookData | null> {
+  const APIFY_TOKEN = getApifyToken()
+
   if (!APIFY_TOKEN) {
     console.warn('Apify API token not configured')
     return null
@@ -206,7 +210,7 @@ export async function searchBookByISBN(isbn: string): Promise<BookData | null> {
 
   let bookData = await searchWithGoogleBooks(cleanISBN)
 
-  if (!bookData && APIFY_TOKEN) {
+  if (!bookData && getApifyToken()) {
     bookData = await searchWithApify(cleanISBN)
   }
 
