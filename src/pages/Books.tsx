@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Edit2, Trash2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Loader2 } from 'lucide-react'
+import { searchBookByISBN } from '../services/bookScraper'
 
 interface Book {
   id: string
@@ -28,6 +29,7 @@ export default function Books() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editingBook, setEditingBook] = useState<Book | null>(null)
+  const [isbnSearchLoading, setIsbnSearchLoading] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     author: '',
@@ -130,6 +132,41 @@ export default function Books() {
     } catch (error) {
       console.error('Error deleting book:', error)
       alert('Erro ao excluir livro')
+    }
+  }
+
+  const handleISBNSearch = async () => {
+    if (!formData.isbn.trim()) {
+      alert('Por favor, digite um ISBN para buscar')
+      return
+    }
+
+    setIsbnSearchLoading(true)
+
+    try {
+      const bookData = await searchBookByISBN(formData.isbn)
+
+      if (!bookData) {
+        alert('Livro não encontrado. Tente outro ISBN.')
+        return
+      }
+
+      setFormData({
+        ...formData,
+        title: bookData.title || formData.title,
+        author: bookData.author || formData.author,
+        description: bookData.description || formData.description,
+        publisher: bookData.publisher || formData.publisher,
+        publication_year: bookData.publicationYear?.toString() || formData.publication_year,
+        price: bookData.price?.toString() || formData.price,
+      })
+
+      alert('Dados do livro carregados com sucesso!')
+    } catch (error) {
+      console.error('Error searching ISBN:', error)
+      alert(error instanceof Error ? error.message : 'Erro ao buscar ISBN')
+    } finally {
+      setIsbnSearchLoading(false)
     }
   }
 
@@ -274,12 +311,33 @@ export default function Books() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">ISBN</label>
-                  <input
-                    type="text"
-                    value={formData.isbn}
-                    onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.isbn}
+                      onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                      placeholder="Digite o ISBN"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleISBNSearch}
+                      disabled={isbnSearchLoading || !formData.isbn.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                    >
+                      {isbnSearchLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Buscando...
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-4 h-4" />
+                          Buscar
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
