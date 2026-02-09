@@ -76,13 +76,26 @@ export default function Books() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    const parsedPrice = Number(formData.price)
+    const parsedStock = Number(formData.stock_quantity)
+
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      alert('Por favor, informe um preço válido (número maior ou igual a zero)')
+      return
+    }
+
+    if (!Number.isFinite(parsedStock) || parsedStock < 0 || !Number.isInteger(parsedStock)) {
+      alert('Por favor, informe uma quantidade de estoque válida (número inteiro maior ou igual a zero)')
+      return
+    }
+
     const bookData = {
       title: formData.title,
       author: formData.author,
       isbn: formData.isbn || null,
       category_id: formData.category_id || null,
-      price: parseFloat(formData.price),
-      stock_quantity: parseInt(formData.stock_quantity),
+      price: parsedPrice,
+      stock_quantity: parsedStock,
       description: formData.description || null,
       publisher: formData.publisher || null,
       publication_year: formData.publication_year ? parseInt(formData.publication_year) : null,
@@ -95,10 +108,18 @@ export default function Books() {
           .update(bookData)
           .eq('id', editingBook.id)
 
-        if (error) throw error
+        if (error) {
+          console.error('Erro ao atualizar livro:', error)
+          alert(`Erro ao atualizar livro: ${error.message}`)
+          return
+        }
       } else {
         const { error } = await supabase.from('books').insert([bookData])
-        if (error) throw error
+        if (error) {
+          console.error('Erro ao cadastrar livro:', error)
+          alert(`Erro ao cadastrar livro: ${error.message}`)
+          return
+        }
       }
 
       setShowModal(false)
@@ -106,8 +127,8 @@ export default function Books() {
       resetForm()
       loadBooks()
     } catch (error) {
-      console.error('Error saving book:', error)
-      alert('Erro ao salvar livro')
+      console.error('Erro ao salvar livro:', error)
+      alert(`Erro ao salvar livro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     }
   }
 
@@ -154,8 +175,41 @@ export default function Books() {
     setIsbnSearchLoading(true)
 
     try {
-      console.log('Iniciando busca por ISBN:', formData.isbn)
-      const bookData = await searchBookByISBN(formData.isbn)
+      const cleanISBN = formData.isbn.replace(/[^0-9X]/gi, '').toUpperCase()
+      console.log('Buscando ISBN:', cleanISBN)
+
+      const { data: existingBook, error: dbError } = await supabase
+        .from('books')
+        .select('*, category:categories(name)')
+        .eq('isbn', cleanISBN)
+        .maybeSingle()
+
+      if (dbError) {
+        console.error('Erro ao buscar no banco:', dbError)
+      }
+
+      if (existingBook) {
+        console.log('Livro encontrado no banco:', existingBook)
+
+        setFormData({
+          title: existingBook.title,
+          author: existingBook.author,
+          isbn: cleanISBN,
+          category_id: existingBook.category_id || '',
+          price: existingBook.price.toString(),
+          stock_quantity: existingBook.stock_quantity.toString(),
+          description: existingBook.description || '',
+          publisher: existingBook.publisher || '',
+          publication_year: existingBook.publication_year?.toString() || '',
+        })
+
+        setIsbnSearchLoading(false)
+        alert(`Livro encontrado no cadastro!\n\nTítulo: ${existingBook.title}\nAutor: ${existingBook.author}\nPreço: R$ ${existingBook.price.toFixed(2)}\nEstoque: ${existingBook.stock_quantity}`)
+        return
+      }
+
+      console.log('Livro não encontrado no banco, buscando na Amazon...')
+      const bookData = await searchBookByISBN(cleanISBN)
 
       if (!bookData) {
         setIsbnSearchLoading(false)
@@ -163,31 +217,20 @@ export default function Books() {
         return
       }
 
-      console.log('Dados recebidos:', bookData)
+      console.log('Dados recebidos da Amazon:', bookData)
 
       const fieldsUpdated: string[] = []
 
-      if (bookData.title && bookData.title !== formData.title) {
-        fieldsUpdated.push('Título')
-      }
-      if (bookData.author && bookData.author !== formData.author) {
-        fieldsUpdated.push('Autor')
-      }
-      if (bookData.description) {
-        fieldsUpdated.push('Descrição')
-      }
-      if (bookData.publisher) {
-        fieldsUpdated.push('Editora')
-      }
-      if (bookData.publicationYear) {
-        fieldsUpdated.push('Ano')
-      }
-      if (bookData.price) {
-        fieldsUpdated.push('Preço')
-      }
+      if (bookData.title) fieldsUpdated.push('Título')
+      if (bookData.author) fieldsUpdated.push('Autor')
+      if (bookData.description) fieldsUpdated.push('Descrição')
+      if (bookData.publisher) fieldsUpdated.push('Editora')
+      if (bookData.publicationYear) fieldsUpdated.push('Ano')
+      if (bookData.price) fieldsUpdated.push('Preço')
 
       setFormData(prev => ({
         ...prev,
+        isbn: cleanISBN,
         title: bookData.title || prev.title,
         author: bookData.author || prev.author,
         description: bookData.description || prev.description,
@@ -199,7 +242,7 @@ export default function Books() {
       setIsbnSearchLoading(false)
 
       if (fieldsUpdated.length > 0) {
-        alert(`✓ Dados carregados!\n\nCampos: ${fieldsUpdated.join(', ')}\n\nAgora preencha preço e estoque.`)
+        alert(`Dados carregados da Amazon!\n\nCampos: ${fieldsUpdated.join(', ')}\n\nAgora preencha preço e estoque.`)
       } else {
         alert('Livro encontrado, mas sem dados adicionais.')
       }
