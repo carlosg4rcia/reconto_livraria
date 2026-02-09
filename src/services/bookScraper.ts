@@ -66,8 +66,8 @@ async function searchWithApify(isbn: string, useISBN10: boolean = false): Promis
     console.log(`Buscando na Amazon: ${searchUrl}`)
 
     const input = {
-      startUrls: [{ url: searchUrl }],
-      maxResults: 5,
+      categoryUrls: [{ url: searchUrl }],
+      maxItems: 5,
       proxyConfiguration: { useApifyProxy: true },
     }
 
