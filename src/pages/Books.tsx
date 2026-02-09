@@ -476,6 +476,14 @@ export default function Books() {
                       type="text"
                       value={formData.isbn}
                       onChange={(e) => setFormData({ ...formData, isbn: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (formData.isbn.trim() && !isbnSearchLoading) {
+                            handleISBNSearch()
+                          }
+                        }
+                      }}
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
                       placeholder="Digite o ISBN"
                     />
