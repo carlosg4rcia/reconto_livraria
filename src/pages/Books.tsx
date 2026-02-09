@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Edit2, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Loader2, Upload, Download, FileSpreadsheet } from 'lucide-react'
 import { searchBookByISBN } from '../services/bookScraper'
+import { parseExcelFile, generateExcelTemplate, ExcelBookData } from '../services/excelImporter'
 
 interface Book {
   id: string
@@ -30,6 +31,10 @@ export default function Books() {
   const [showModal, setShowModal] = useState(false)
   const [editingBook, setEditingBook] = useState<Book | null>(null)
   const [isbnSearchLoading, setIsbnSearchLoading] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importedBooks, setImportedBooks] = useState<ExcelBookData[]>([])
+  const [importLoading, setImportLoading] = useState(false)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [formData, setFormData] = useState({
     title: '',
     author: '',
@@ -151,6 +156,27 @@ export default function Books() {
         return
       }
 
+      const fieldsUpdated: string[] = []
+
+      if (bookData.title && bookData.title !== formData.title) {
+        fieldsUpdated.push('Título')
+      }
+      if (bookData.author && bookData.author !== formData.author) {
+        fieldsUpdated.push('Autor')
+      }
+      if (bookData.description) {
+        fieldsUpdated.push('Descrição')
+      }
+      if (bookData.publisher) {
+        fieldsUpdated.push('Editora')
+      }
+      if (bookData.publicationYear) {
+        fieldsUpdated.push('Ano')
+      }
+      if (bookData.price) {
+        fieldsUpdated.push('Preço')
+      }
+
       setFormData({
         ...formData,
         title: bookData.title || formData.title,
@@ -161,10 +187,14 @@ export default function Books() {
         price: bookData.price?.toString() || formData.price,
       })
 
-      alert('Dados do livro carregados com sucesso!')
+      if (fieldsUpdated.length > 0) {
+        alert(`✓ Dados carregados com sucesso!\n\nCampos preenchidos:\n• ${fieldsUpdated.join('\n• ')}`)
+      } else {
+        alert('Livro encontrado, mas nenhum dado adicional disponível.')
+      }
     } catch (error) {
       console.error('Error searching ISBN:', error)
-      alert(error instanceof Error ? error.message : 'Erro ao buscar ISBN')
+      alert(`Erro ao buscar ISBN:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     } finally {
       setIsbnSearchLoading(false)
     }
@@ -184,6 +214,116 @@ export default function Books() {
     })
   }
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      alert('Por favor, selecione um arquivo Excel válido (.xlsx ou .xls)')
+      return
+    }
+
+    setImportLoading(true)
+
+    try {
+      const result = await parseExcelFile(file)
+
+      if (result.errors.length > 0) {
+        console.warn('Erros durante importação:', result.errors)
+      }
+
+      if (result.books.length === 0) {
+        alert('Nenhum livro válido encontrado na planilha')
+        return
+      }
+
+      setImportedBooks(result.books)
+      setShowImportModal(true)
+      alert(`${result.success} livros carregados da planilha!${result.failed > 0 ? ` (${result.failed} linhas com erro)` : ''}`)
+    } catch (error) {
+      console.error('Error processing file:', error)
+      alert('Erro ao processar arquivo')
+    } finally {
+      setImportLoading(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleImportBooks = async () => {
+    if (importedBooks.length === 0) return
+
+    setImportLoading(true)
+    setImportProgress({ current: 0, total: importedBooks.length })
+
+    let successCount = 0
+    let errorCount = 0
+
+    for (let i = 0; i < importedBooks.length; i++) {
+      const book = importedBooks[i]
+      setImportProgress({ current: i + 1, total: importedBooks.length })
+
+      try {
+        let categoryId = null
+
+        if (book.categoria) {
+          const { data: existingCategory } = await supabase
+            .from('categories')
+            .select('id')
+            .ilike('name', book.categoria)
+            .maybeSingle()
+
+          if (existingCategory) {
+            categoryId = existingCategory.id
+          } else {
+            const { data: newCategory, error: categoryError } = await supabase
+              .from('categories')
+              .insert([{ name: book.categoria }])
+              .select('id')
+              .single()
+
+            if (!categoryError && newCategory) {
+              categoryId = newCategory.id
+            }
+          }
+        }
+
+        const bookData = {
+          title: book.titulo || '',
+          author: book.autor || '',
+          isbn: book.isbn || null,
+          category_id: categoryId,
+          price: book.preco || 0,
+          stock_quantity: book.estoque || 0,
+          description: book.descricao || null,
+          publisher: book.editora || null,
+          publication_year: book.ano || null,
+        }
+
+        const { error } = await supabase.from('books').insert([bookData])
+
+        if (error) {
+          console.error(`Erro ao importar livro ${book.titulo}:`, error)
+          errorCount++
+        } else {
+          successCount++
+        }
+      } catch (error) {
+        console.error(`Erro ao processar livro ${book.titulo}:`, error)
+        errorCount++
+      }
+    }
+
+    setImportLoading(false)
+    setShowImportModal(false)
+    setImportedBooks([])
+    setImportProgress({ current: 0, total: 0 })
+
+    alert(`Importação concluída!\n${successCount} livros importados com sucesso${errorCount > 0 ? `\n${errorCount} livros com erro` : ''}`)
+
+    await loadBooks()
+    await loadCategories()
+  }
+
   const filteredBooks = books.filter(
     (book) =>
       book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -198,17 +338,37 @@ export default function Books() {
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-800">Livros</h1>
-        <button
-          onClick={() => {
-            setEditingBook(null)
-            resetForm()
-            setShowModal(true)
-          }}
-          className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700 transition flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          Novo Livro
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => generateExcelTemplate()}
+            className="bg-gray-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-gray-700 transition flex items-center gap-2"
+          >
+            <Download className="w-5 h-5" />
+            Baixar Modelo
+          </button>
+          <label className="bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center gap-2 cursor-pointer">
+            <Upload className="w-5 h-5" />
+            {importLoading ? 'Processando...' : 'Importar Planilha'}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileUpload}
+              disabled={importLoading}
+              className="hidden"
+            />
+          </label>
+          <button
+            onClick={() => {
+              setEditingBook(null)
+              resetForm()
+              setShowModal(true)
+            }}
+            className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-emerald-700 transition flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Novo Livro
+          </button>
+        </div>
       </div>
 
       <div className="mb-6">
@@ -450,6 +610,127 @@ export default function Books() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">Preview de Importação</h2>
+                <p className="text-gray-600 mt-1">
+                  {importedBooks.length} livro(s) pronto(s) para importação
+                </p>
+              </div>
+              <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
+            </div>
+
+            {importLoading && (
+              <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                  <div className="flex-1">
+                    <p className="font-medium text-blue-900">
+                      Importando livros... {importProgress.current} de {importProgress.total}
+                    </p>
+                    <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${(importProgress.current / importProgress.total) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden mb-4">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        Título
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        Autor
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        ISBN
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        Categoria
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        Preço
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                        Estoque
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {importedBooks.slice(0, 10).map((book, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-800">{book.titulo}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{book.autor}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {book.isbn || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {book.categoria || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {book.preco ? `R$ ${book.preco.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {book.estoque || 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {importedBooks.length > 10 && (
+                <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-600 text-center">
+                  ... e mais {importedBooks.length - 10} livro(s)
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleImportBooks}
+                disabled={importLoading}
+                className="flex-1 bg-emerald-600 text-white py-3 rounded-lg font-semibold hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {importLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5" />
+                    Confirmar Importação
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportModal(false)
+                  setImportedBooks([])
+                }}
+                disabled={importLoading}
+                className="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
