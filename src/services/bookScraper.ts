@@ -21,29 +21,6 @@ interface ApifyBookResult {
   }
 }
 
-interface GoogleBookResult {
-  volumeInfo?: {
-    title?: string
-    authors?: string[]
-    description?: string
-    publisher?: string
-    publishedDate?: string
-    imageLinks?: {
-      thumbnail?: string
-      smallThumbnail?: string
-    }
-    industryIdentifiers?: Array<{
-      type: string
-      identifier: string
-    }>
-  }
-  saleInfo?: {
-    listPrice?: {
-      amount?: number
-    }
-  }
-}
-
 function getApifyToken(): string | null {
   return localStorage.getItem('apify_token') || import.meta.env.VITE_APIFY_API_TOKEN || null
 }
@@ -158,49 +135,6 @@ async function searchWithApify(isbn: string): Promise<BookData | null> {
   }
 }
 
-async function searchWithGoogleBooks(isbn: string): Promise<BookData | null> {
-  try {
-    const response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`
-    )
-
-    if (!response.ok) {
-      return null
-    }
-
-    const data = await response.json()
-
-    if (!data.items || data.items.length === 0) {
-      return null
-    }
-
-    const book = data.items[0] as GoogleBookResult
-    const volumeInfo = book.volumeInfo
-
-    if (!volumeInfo) {
-      return null
-    }
-
-    const publicationYear = volumeInfo.publishedDate
-      ? parseInt(volumeInfo.publishedDate.split('-')[0])
-      : undefined
-
-    return {
-      title: volumeInfo.title || 'Título Desconhecido',
-      author: volumeInfo.authors?.join(', ') || 'Autor Desconhecido',
-      isbn,
-      description: volumeInfo.description,
-      publisher: volumeInfo.publisher,
-      publicationYear,
-      price: book.saleInfo?.listPrice?.amount,
-      coverImage: volumeInfo.imageLinks?.thumbnail || volumeInfo.imageLinks?.smallThumbnail,
-    }
-  } catch (error) {
-    console.error('Error fetching from Google Books:', error)
-    return null
-  }
-}
-
 export async function searchBookByISBN(isbn: string): Promise<BookData | null> {
   const cleanISBN = isbn.replace(/[^0-9X]/gi, '')
 
@@ -208,10 +142,16 @@ export async function searchBookByISBN(isbn: string): Promise<BookData | null> {
     throw new Error('ISBN inválido. Deve ter 10 ou 13 dígitos.')
   }
 
-  let bookData = await searchWithGoogleBooks(cleanISBN)
+  const APIFY_TOKEN = getApifyToken()
 
-  if (!bookData && getApifyToken()) {
-    bookData = await searchWithApify(cleanISBN)
+  if (!APIFY_TOKEN) {
+    throw new Error('Token da API Apify não configurado. Configure em Configurações.')
+  }
+
+  const bookData = await searchWithApify(cleanISBN)
+
+  if (!bookData) {
+    throw new Error('Livro não encontrado na Amazon.')
   }
 
   return bookData
