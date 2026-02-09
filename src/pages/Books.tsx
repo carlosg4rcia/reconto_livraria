@@ -140,7 +140,12 @@ export default function Books() {
     }
   }
 
-  const handleISBNSearch = async () => {
+  const handleISBNSearch = async (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
     if (!formData.isbn.trim()) {
       alert('Por favor, digite um ISBN para buscar')
       return
@@ -149,12 +154,16 @@ export default function Books() {
     setIsbnSearchLoading(true)
 
     try {
+      console.log('Iniciando busca por ISBN:', formData.isbn)
       const bookData = await searchBookByISBN(formData.isbn)
 
       if (!bookData) {
         alert('Livro não encontrado. Tente outro ISBN.')
+        setIsbnSearchLoading(false)
         return
       }
+
+      console.log('Dados recebidos:', bookData)
 
       const fieldsUpdated: string[] = []
 
@@ -177,7 +186,7 @@ export default function Books() {
         fieldsUpdated.push('Preço')
       }
 
-      setFormData({
+      const updatedFormData = {
         ...formData,
         title: bookData.title || formData.title,
         author: bookData.author || formData.author,
@@ -185,16 +194,25 @@ export default function Books() {
         publisher: bookData.publisher || formData.publisher,
         publication_year: bookData.publicationYear?.toString() || formData.publication_year,
         price: bookData.price?.toString() || formData.price,
-      })
+      }
+
+      console.log('Atualizando formulário com:', updatedFormData)
+      setFormData(updatedFormData)
 
       if (fieldsUpdated.length > 0) {
-        alert(`✓ Dados carregados com sucesso!\n\nCampos preenchidos:\n• ${fieldsUpdated.join('\n• ')}`)
+        setTimeout(() => {
+          alert(`✓ Dados carregados com sucesso!\n\nCampos preenchidos:\n• ${fieldsUpdated.join('\n• ')}\n\nPreencha preço e estoque para finalizar.`)
+        }, 100)
       } else {
-        alert('Livro encontrado, mas nenhum dado adicional disponível.')
+        setTimeout(() => {
+          alert('Livro encontrado, mas nenhum dado adicional disponível.')
+        }, 100)
       }
     } catch (error) {
       console.error('Error searching ISBN:', error)
-      alert(`Erro ao buscar ISBN:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      setTimeout(() => {
+        alert(`Erro ao buscar ISBN:\n${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      }, 100)
     } finally {
       setIsbnSearchLoading(false)
     }
@@ -480,7 +498,7 @@ export default function Books() {
                         if (e.key === 'Enter') {
                           e.preventDefault()
                           if (formData.isbn.trim() && !isbnSearchLoading) {
-                            handleISBNSearch()
+                            handleISBNSearch(e)
                           }
                         }
                       }}
@@ -489,7 +507,7 @@ export default function Books() {
                     />
                     <button
                       type="button"
-                      onClick={handleISBNSearch}
+                      onClick={(e) => handleISBNSearch(e)}
                       disabled={isbnSearchLoading || !formData.isbn.trim()}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
                     >
